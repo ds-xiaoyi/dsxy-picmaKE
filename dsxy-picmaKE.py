@@ -2422,6 +2422,9 @@ class MainWindow(QMainWindow):
         file_path, _ = QFileDialog.getSaveFileName(self, "保存模板", "", "模板文件 (*.json)")
         if file_path:
             try:
+                # 获取模板文件所在目录
+                template_dir = os.path.dirname(file_path)
+                
                 background_info = None
                 if (self.template_editor.background_item and 
                     isinstance(self.template_editor.background_item, MovableImageItem)):
@@ -2430,17 +2433,34 @@ class MainWindow(QMainWindow):
                                    self.template_editor.background_item.pos().y()),
                         'scale': self.template_editor.background_item.current_scale
                     }
+                
+                # 转换背景图片路径为相对路径
                 background_image_path = None
                 if self.template_editor.template.background_image:
-                    background_image_path = self.to_relative_path(self.template_editor.template.background_image)
+                    try:
+                        background_image_path = os.path.relpath(self.template_editor.template.background_image, template_dir)
+                        background_image_path = background_image_path.replace('\\', '/')
+                    except ValueError:
+                        # 如果无法转换为相对路径（在不同驱动器），保持绝对路径
+                        background_image_path = self.template_editor.template.background_image
+                
                 elements = []
                 for element in self.template_editor.template.elements:
                     new_element = element.copy()
                     if element.get('type') == 'image' and 'image_path' in element:
-                        new_element['image_path'] = self.to_relative_path(element['image_path'])
+                        # 转换图片路径为相对路径
+                        try:
+                            new_element['image_path'] = os.path.relpath(element['image_path'], template_dir).replace('\\', '/')
+                        except ValueError:
+                            new_element['image_path'] = element['image_path']
                     if element.get('type') == 'text' and 'font_path' in element:
-                        new_element['font_path'] = self.to_relative_path(element['font_path'])
+                        # 转换字体路径为相对路径
+                        try:
+                            new_element['font_path'] = os.path.relpath(element['font_path'], template_dir).replace('\\', '/')
+                        except ValueError:
+                            new_element['font_path'] = element['font_path']
                     elements.append(new_element)
+                
                 template_data = {
                     'width': self.template_editor.template.width,
                     'height': self.template_editor.template.height,
@@ -2458,18 +2478,36 @@ class MainWindow(QMainWindow):
         file_path, _ = QFileDialog.getOpenFileName(self, "加载模板", "", "模板文件 (*.json)")
         if file_path:
             try:
+                # 获取模板文件所在目录
+                template_dir = os.path.dirname(file_path)
+                
                 with open(file_path, 'r', encoding='utf-8') as f:
                     template_data = json.load(f)
+                
+                # 转换相对路径为绝对路径
                 background_image_path = None
                 if template_data.get('background_image'):
-                    background_image_path = self.to_absolute_path(template_data['background_image'])
+                    bg_path = template_data['background_image']
+                    if not os.path.isabs(bg_path):
+                        background_image_path = os.path.normpath(os.path.join(template_dir, bg_path))
+                    else:
+                        background_image_path = bg_path
+                
                 elements = []
                 for element in template_data.get('elements', []):
                     new_element = element.copy()
                     if element.get('type') == 'image' and 'image_path' in element:
-                        new_element['image_path'] = self.to_absolute_path(element['image_path'])
+                        img_path = element['image_path']
+                        if not os.path.isabs(img_path):
+                            new_element['image_path'] = os.path.normpath(os.path.join(template_dir, img_path))
+                        else:
+                            new_element['image_path'] = img_path
                     if element.get('type') == 'text' and 'font_path' in element:
-                        new_element['font_path'] = self.to_absolute_path(element['font_path'])
+                        font_path = element['font_path']
+                        if font_path and not os.path.isabs(font_path):
+                            new_element['font_path'] = os.path.normpath(os.path.join(template_dir, font_path))
+                        else:
+                            new_element['font_path'] = font_path
                     elements.append(new_element)
                 self.template_editor.template = CoverTemplate(
                     template_data['width'], template_data['height']
